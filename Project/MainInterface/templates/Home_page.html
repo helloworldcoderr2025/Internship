@@ -1,0 +1,43 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Homepage</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="{% static 'js/Home_page.js' %}"></script> 
+</head>
+<body>
+    <h1>Welcome to the Data Query Portal</h1>
+    <p>This portal allows you to upload datasets and generate results without writing SQL queries manually.</p>
+
+    <a href="{% url 'upload_page' %}">Upload CSV/Excel</a>
+    <a href="{% url 'table_operations' %}">Table Operations</a>
+
+    <!-- SECTION-1 (Select Multiple Tables) -->
+    <div>
+        <h3>Section 1: Select Tables</h3>
+        <select id="selecting_table" multiple size="5">
+            {% for table in list_of_tables %}
+                <option value="{{ table }}">{{ table }}</option>
+            {% endfor %}
+        </select>
+        <button id="load_columns_btn">Load Columns</button>
+    </div>
+
+    <!-- SECTION-2 (Select Columns for Each Selected Table) -->
+    <div id="selecting_output_columns" style="display: none;">
+        <h3>Section 2: Select Columns to Display</h3>
+        <form id="columnForm">
+            <div id="columns_container"></div>
+            <button type="submit">Next</button>
+        </form>
+    </div>
+    <!-- SECTION-3: Conditional Filtering -->
+    <div id="section_3_conditions" style="display: none;">
+        <h3>Section 3: Apply Conditions</h3>
+        <div id="condition_rules_container"></div>
+        <button id="add_condition_btn">+ Add Condition</button>
+    </div>
+</body>
+</html>
