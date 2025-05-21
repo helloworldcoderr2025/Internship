@@ -25,7 +25,7 @@ SECRET_KEY = "django-insecure-#=yq#fj677ee7t(&hw#mk@0gm+i)3pq0zg3w*d=nx9)^qgn2#o
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -42,6 +42,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -119,9 +120,9 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATICFILES_DIRS = [
-    BASE_DIR / "static",  # So Django knows to look here
+    BASE_DIR / 'static',  # So Django knows to look here
 ]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
