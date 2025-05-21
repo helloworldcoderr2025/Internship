@@ -1,17 +1,16 @@
 from django.shortcuts import render,redirect
+from collections import defaultdict, deque
 from django.contrib import messages
 from django.db import connection
-from django.http import HttpResponse,JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.http import HttpResponse,JsonResponse,HttpResponseBadRequest
 import pandas as pd
 import re
 import json
 
 # Homepage view
 def home_page_view(request):
-    with connection.cursor() as cur:
-        cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' and tablename NOT LIKE 'django%' and tablename NOT LIKE 'auth%'; ")
-        list_of_tables = [table[0] for table in cur.fetchall()]
-    return render(request, 'Home_page.html',{'list_of_tables':list_of_tables})
+    return render(request, 'Home_page.html')
 
 # Uploadpage view
 def upload_page_view(request):
@@ -265,8 +264,169 @@ def get_columns_view(request):
     except Exception as e:
         return JsonResponse({'error':str(e)},status=500)
     
+def get_columns_view(request):
+    table_name = request.GET.get('table_name')
+    if not table_name :
+        return JsonResponse({'error':'Table name not provided'},status=400)
+    try:
+        with connection.cursor() as cur:
+            cur.execute(""" SELECT column_name FROM information_schema.columns WHERE table_name = %s AND table_schema = 'public';""", [table_name])
+            columns = [row[0] for row in cur.fetchall()]
+        return JsonResponse({'columns':columns})
+    except Exception as e:
+        return JsonResponse({'error': str(e)},status=500)
+    
+def get_distinct_column_values_view(request):
+    table = request.GET.get('table')
+    column = request.GET.get('column')
+
+    if not table or not column:
+        return JsonResponse({'error':'Missing table_name or column parameter '})
+    try:
+        with connection.cursor() as cur:
+            cur.execute( f'SELECT DISTINCT "{column}" FROM "{table}" WHERE "{column}" IS NOT NULL LIMIT 100')
+            values = [ str(row[0]) for row in cur.fetchall() ]
+        return JsonResponse({'values':values})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+def get_all_tables_view(request):
+    # For PostgreSQL:
+    with connection.cursor() as cur:
+        cur.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public' and tablename NOT LIKE 'django%' and tablename NOT LIKE 'auth%'; ")
+        tables = [row[0] for row in cur.fetchall()]
+    return JsonResponse({'tables': tables})
 
 
+
+def restore_type_and_cast(val):
+    """Restore Python type and provide corresponding SQL CAST type."""
+    if val is None:
+        return None, None
+    try:
+        int_val = int(val)
+        return int_val, 'INTEGER'
+    except (ValueError, TypeError):
+        pass
+    try:
+        float_val = float(val)
+        return float_val, 'REAL'
+    except (ValueError, TypeError):
+        pass
+    if isinstance(val, str) and val.lower() in ['true', 'false']:
+        return val.lower() == 'true', 'BOOLEAN'
+    return val, None  # Treat as TEXT
+
+@csrf_exempt
+def submit_query_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Only POST allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        tables = data.get('tables', [])
+        output_columns = data.get('outputColumns', {})
+        conditions = data.get('conditions', [])
+        joins = data.get('joins', [])
+
+        if not tables:
+            return JsonResponse({'error': 'No tables selected'}, status=400)
+
+        base_table = tables[0]
+
+        # SELECT clause
+        select_cols = []
+        for table in tables:
+            for col in output_columns.get(table, []):
+                select_cols.append(f"{table}.{col}")
+        select_cols_str = ', '.join(select_cols) if select_cols else '*'
+
+        # JOIN graph construction
+        join_graph = defaultdict(list)
+        join_map = {}
+        for join in joins:
+            t1, t2 = join['table1'], join['table2']
+            join_graph[t1].append((t2, join))
+            join_graph[t2].append((t1, join))
+            join_map[(t1, t2)] = join
+            join_map[(t2, t1)] = join  # Bi-directional
+
+        # BFS to determine join order
+        visited = set()
+        queue = deque([base_table])
+        visited.add(base_table)
+        join_clauses = []
+
+        while queue:
+            current = queue.popleft()
+            for neighbor, join in join_graph[current]:
+                if neighbor in visited:
+                    continue
+
+                jtype = join.get('joinType', 'INNER').upper()
+                if jtype not in ('INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS'):
+                    jtype = 'INNER'
+
+                t1, c1 = join['table1'], join['column1']
+                t2, c2 = join['table2'], join['column2']
+
+                # Direction matters: make sure the base is already visited
+                if current == t1:
+                    clause = f"{jtype} JOIN {t2} ON {t1}.{c1} = {t2}.{c2}"
+                else:
+                    clause = f"{jtype} JOIN {t1} ON {t2}.{c2} = {t1}.{c1}"
+
+                join_clauses.append(clause)
+                queue.append(neighbor)
+                visited.add(neighbor)
+
+        # Construct final query
+        query = f"SELECT {select_cols_str} FROM {base_table} " + " ".join(join_clauses)
+
+        # WHERE clause
+        where_clauses = []
+        query_params = []
+
+        for cond in conditions:
+            col = cond.get('column')
+            op = cond.get('operator', '=').strip()
+            val = cond.get('value')
+            table_for_col = cond.get('table') or base_table
+
+            if val in (None, 'null', 'None'):
+                if op == '=':
+                    where_clauses.append(f"{table_for_col}.{col} IS NULL")
+                elif op in ('!=', '<>'):
+                    where_clauses.append(f"{table_for_col}.{col} IS NOT NULL")
+                continue
+
+            restored_val, cast_type = restore_type_and_cast(val)
+            col_expr = f"CAST({table_for_col}.{col} AS {cast_type})" if cast_type else f"{table_for_col}.{col}"
+
+            if op not in ('=', '!=', '<>', '>', '<', '>=', '<='):
+                op = '='
+
+            where_clauses.append(f"{col_expr} {op} %s")
+            query_params.append(restored_val)
+
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+
+        print("Final SQL Query:", query)
+        print("With Params:", query_params)
+
+        with connection.cursor() as cursor:
+            cursor.execute(query, query_params)
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+
+        if not rows:
+            return JsonResponse({'columns': [], 'rows': [], 'message': 'No results to display'})
+
+        return JsonResponse({'columns': columns, 'rows': rows})
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 
