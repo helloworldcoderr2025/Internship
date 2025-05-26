@@ -77,6 +77,21 @@ class AuthUserUserPermissions(models.Model):
         unique_together = (('user', 'permission'),)
 
 
+class Company(models.Model):
+    tbl_id = models.TextField(blank=True, null=True)
+    name = models.TextField(blank=True, null=True)
+    type_of_company = models.TextField(blank=True, null=True)
+    eligible_branch = models.TextField(blank=True, null=True)
+    type_of_job = models.TextField(blank=True, null=True)
+    job_profile = models.TextField(blank=True, null=True)
+    job_offer = models.TextField(blank=True, null=True)
+    max_package_offered = models.TextField(blank=True, null=True)
+    eligible_passouts = models.TextField(blank=True, null=True)
+    hr_contact_details = models.TextField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'company'
 
 
 class CseDepartment(models.Model):
@@ -164,7 +179,7 @@ class Placements(models.Model):
 
 
 class Registrations(models.Model):
-    registered_id = models.TextField(blank=True,primary_key=True)
+    registered_id = models.TextField(blank=True, null=True)
     rollnumber = models.TextField(blank=True, null=True)
     company_id = models.TextField(blank=True, null=True)
     level = models.TextField(blank=True, null=True)
@@ -173,6 +188,7 @@ class Registrations(models.Model):
     class Meta:
         managed = False
         db_table = 'registrations'
+
 
 class Student(models.Model):
     roll_no = models.TextField(primary_key=True)
@@ -191,25 +207,7 @@ class Student(models.Model):
     linkedin = models.TextField(blank=True, null=True)
     verified = models.TextField(blank=True, null=True)
     remarks = models.TextField(blank=True, null=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         managed = False
         db_table = 'student'
-
-
-class Company(models.Model):
-    tbl_id = models.TextField(blank=True,primary_key=True)
-    name = models.TextField(blank=True, null=True)
-    type_of_company = models.TextField(blank=True, null=True)
-    eligible_branch = models.TextField(blank=True, null=True)
-    type_of_job = models.TextField(blank=True, null=True)
-    job_profile = models.TextField(blank=True, null=True)
-    job_offer = models.TextField(blank=True, null=True)
-    max_package_offered = models.TextField(blank=True, null=True)
-    eligible_passouts = models.TextField(blank=True, null=True)
-    hr_contact_details = models.TextField(blank=True, null=True)
-
-    class Meta:
-        managed = False
-        db_table = 'company'

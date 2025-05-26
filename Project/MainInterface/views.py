@@ -1,13 +1,15 @@
 from django.shortcuts import render,redirect
 from collections import defaultdict, deque
 from django.contrib import messages
+from django.contrib.auth.models import User,auth
 from django.db import connection
 from django.views.decorators.csrf import csrf_exempt
 from django.http import HttpResponse,JsonResponse,HttpResponseBadRequest
 import pandas as pd
 import re
 import json
-
+from .models import Student,Registrations,Company,AuthUser
+from django.contrib.auth.decorators import login_required
 # Homepage view
 def home_page_view(request):
     return render(request, 'Home_page.html')
@@ -673,3 +675,282 @@ def get_row_data_view(request):
             return JsonResponse(data)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+    
+def index(request):
+    levelId = {
+    "Applied": 1,
+    "CV Screening": 2,
+    "Aptitude Test": 3,
+    "GD": 4,
+    "Coding Test": 5,
+    "Technical Interview": 6,
+    "Technical Round 2": 6,
+    "HR Interview": 7,
+    "Offer": 8
+    }
+    studentFound=False
+    registered=False
+    send=[]
+    if request.method=="POST":
+        rollNumber=request.POST['rollNumber']
+        try :
+            print('hello1')
+            student=Student.objects.get(roll_no=rollNumber)
+            print('2')
+            studentFound=True
+            if student.registered=="Yes":
+                registered=True
+                try: 
+                    print('3')
+                    register=Registrations.objects.filter(rollnumber__iexact=rollNumber)
+                    for reg in register:
+                        company=Company.objects.get(tbl_id=reg.company_id)
+                        ob={"companyName":company.name,"level":levelId[reg.level],"status":reg.status}
+                        send.append(ob)
+                except Exception as e:
+                    print(e)
+
+                
+        except Exception as e:
+            print(e)
+            messages.info(request,"Student Doesn't Exist")
+            student=None
+            studentFound=False
+        print(send)
+        return render(request,'index.html',{'studentFound':studentFound,'student':student,'registered':registered,'send':send})
+    else:
+        return render(request,'index.html')
+    
+def register(request):
+    if request.method=="POST":
+        rollNum=request.POST['rollNum']
+        branches={1:"BIO",2:"CHE",3:"CIV",4:"CSE",5:"EEE",6:"ECE",7:"MEC",8:"MME"}
+        name=request.POST['name']
+        year=request.POST['year']
+        email=request.POST['email']
+        passwd1=request.POST['password1']
+        passwd2=request.POST['password2']
+        interest=request.POST['job_interest_type']
+        mobile=request.POST['mobileNo']
+        cgpa=request.POST['cgpa']
+        gate=request.GET.get('gate','NIL')
+        backlogs=request.POST['backlogs']
+        placed=request.POST['placed']
+        linkedin=request.POST['linkedin']
+        willing=request.POST['willing']
+        # print(name,rollNum,dept,year,email,passwd1,interest,willing,mobile,cgpa,gate,backlogs,placed,linkedin)
+        if len(rollNum) != 6:
+            messages.info(request, "Enter a Valid Roll Number Given by Institute")
+            return render(request, "register.html", {
+                'name': name,
+                'rollNum': rollNum,
+                'year': year,
+                'email': email,
+                'job_interest_type': interest,
+                'mobileNo': mobile,
+                'cgpa': cgpa,
+                'backlogs': backlogs,
+                'placed': placed,
+                'linkedin': linkedin,
+                'willing': willing,
+                'gate':gate,
+            })
+        if Student.objects.filter(roll_no=rollNum).exists():
+            messages.info(request,"Roll Number already Exist .. Kindly Login")
+            return render(request, "register.html", {
+                            'name': name,
+                            'rollNum': rollNum,
+                            'year': year,
+                            'email': email,
+                            'job_interest_type': interest,
+                            'mobileNo': mobile,
+                            'cgpa': cgpa,
+                            'backlogs': backlogs,
+                            'placed': placed,
+                            'linkedin': linkedin,
+                            'willing': willing,
+                            'gate':gate,
+            })  
+        if len(mobile)!=10 or not mobile.isdigit():
+            messages.info(request,"Enter a Valid Mobile Number")
+            return render(request, "register.html", {
+                'name': name,
+                'rollNum': rollNum,
+                'year': year,
+                'email': email,
+                'job_interest_type': interest,
+                'mobileNo': mobile,
+                'cgpa': cgpa,
+                'backlogs': backlogs,
+                'placed': placed,
+                'linkedin': linkedin,
+                'willing': willing,
+                'gate':gate
+            })
+        if len(backlogs)>50 or not backlogs.isdigit():
+            messages.info(request,"Enter a Valid Number of backlogs")
+            return render(request, "register.html", {
+                'name': name,
+                'rollNum': rollNum,
+                'year': year,
+                'email': email,
+                'job_interest_type': interest,
+                'mobileNo': mobile,
+                'cgpa': cgpa,
+                'backlogs': backlogs,
+                'placed': placed,
+                'linkedin': linkedin,
+                'willing': willing,
+                'gate':gate
+            })
+        if passwd1 != passwd2:
+            messages.info(request, "Passwords do not match")
+            return render(request, "register.html", {
+                'name': name,
+                'rollNum': rollNum,
+                'year': year,
+                'email': email,
+                'job_interest_type': interest,
+                'mobileNo': mobile,
+                'cgpa': cgpa,
+                'backlogs': backlogs,
+                'placed': placed,
+                'linkedin': linkedin,
+                'willing': willing,
+                'gate':gate
+            })
+        try:
+            cgpa_val = float(cgpa)
+            if cgpa_val < 0 or cgpa_val > 10:
+                raise ValueError
+        except ValueError:
+            messages.info(request, "Enter a valid CGPA (0–10)")
+            return render(request, "register.html", {
+                'name': name,
+                'rollNum': rollNum,
+                'year': year,
+                'email': email,
+                'job_interest_type': interest,
+                'mobileNo': mobile,
+                'cgpa': cgpa,
+                'backlogs': backlogs,
+                'placed': placed,
+                'linkedin': linkedin,
+                'willing': willing,
+                'gate':gate
+            })
+
+        dept=branches[int(rollNum)//100000]
+        student=Student.objects.create(name=name,roll_no=rollNum,branch=dept,registered=willing,
+                                       job_type=interest,email=email,academic_year=year,password=passwd1,
+                                       gate_rank=gate,mobile=mobile,cgpa=cgpa,placed=placed,backlogs=backlogs,linkedin=linkedin)
+        student.save()
+        user=User.objects.create_user(password=passwd1,username=rollNum+"@student.nitandhra.ac.in",first_name=name,email=email)
+        user.save()
+        return redirect("login")
+    else:
+        return render(request,"register.html")
+
+def login(request):
+    if request.method=="POST":
+        email=request.POST['email']
+        password=request.POST['password']
+        user=auth.authenticate(username=email,password=password)
+        print(email)
+        print(password)
+        if user is not None :
+            auth.login(request,user)
+            return redirect("index")
+        else :
+            messages.info(request,'Invalid Credentials !!!')
+            return redirect("login")
+    return render(request,"login.html")
+
+def logout(request):
+    auth.logout(request)
+    return redirect("/")
+
+def profile(request):
+    levelId={
+        "GD":3,
+        "Applied":1,
+        "Aptitude Test":2,
+        "Coding Test":4,
+        "Technical Interview":5,
+        "Technical Round 2":5,
+        "HR Interview":6,
+        "Offer":7
+    }
+    send=[]
+    roll=request.user.username.split("@")[0]
+    student=Student.objects.get(roll_no=roll)
+    if student.registered=="Yes":
+                try: 
+                    register=Registrations.objects.filter(rollnumber__iexact=roll)
+                    for reg in register:
+                        company=Company.objects.get(tbl_id=reg.company_id)
+                        ob={"companyName":company.name,"level":levelId[reg.level],"status":reg.status}
+                        send.append(ob)
+                except Exception as e:
+                    print(e)
+    
+    return render(request,"profile.html",{'student':student,'send':send})
+
+def tplogin(request):
+    if request.method=="POST":
+        email=request.POST['email']
+        password=request.POST['password']
+        user=auth.authenticate(username=email,password=password)
+        print(email)
+        print(password)
+        if user is not None :
+            auth.login(request,user)
+            return redirect("tpportal")
+        else :
+            messages.info(request,'Invalid Credentials !!!')
+            return redirect("login")
+    return render(request,"tplogin.html")
+
+@login_required(login_url='tplogin')
+def tpportal(request):
+    return render(request,"tpportal.html")
+
+@login_required(login_url='tplogin')
+def verifystudents(request):
+    if request.method=="POST":
+        rollno=request.POST['rollno']
+        cgpa=request.POST['cgpa']
+        gate=request.POST['gate']
+        backlogs=request.POST['backlogs']
+        linkedin=request.POST['linkedin']
+        verify=request.POST.get('verify','No')
+        # print(cgpa)
+        # print(gate)
+        # print(backlogs)
+        # print(linkedin)
+        # print(verify)
+        mssg=cgpa+" ;"+gate+" ;"+backlogs+" ;"+linkedin+" ;"
+        student=Student.objects.get(roll_no=rollno)
+        student.remarks = mssg
+        if verify=="Yes":
+            student.verified="Yes"
+        student.save()
+        return redirect("tpportal")
+    else:
+        student = Student.objects.filter(verified='No').order_by('updated_at').first()
+        return render(request, "verifystudents.html", {'student': student})
+    
+@login_required(login_url='tplogin')
+def updatestudentplacement(request):
+    if request.method=="POST":
+        if 'rollno' in request.POST:
+            rollno=request.POST['rollno']
+            company=request.POST['company']
+            student=Registrations.objects.filter(rollnumber=rollno,company_id=company)
+            form2="yes"
+            # print(student.level)
+            return render(request,"update_student_placement.html",{'student':student,'form2':form2})
+        else:
+            pass
+        return redirect("tpportal")
+    return render(request,"update_student_placement.html")
