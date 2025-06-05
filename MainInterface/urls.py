@@ -12,6 +12,7 @@ urlpatterns = [
     path('tplogin',views.tplogin,name="tplogin"),
     path('stats',views.stats,name="stats"),
     path('profile',views.profile,name="profile"),
+    path('editprofile',views.editprofile,name="editprofile"),
     path('notifications',views.notifications,name="notifications"),
     path('logout',views.logout,name="logout"),
     path('login',views.login,name="login"),

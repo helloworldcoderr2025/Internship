@@ -17,8 +17,8 @@
       National Institute of Technology, Andhra Pradesh
     </h1>
     <h2 style="text-align: center">Placement Portal</h2>
-    <h3 style="text-align: center">Registration Form</h3>
-    <form action="register" enctype="multipart/form-data" method="POST" style="padding: 2%">
+    <h3 style="text-align: center">Update Student Details </h3>
+    <form action="editprofile" enctype="multipart/form-data" method="POST" style="padding: 2%">
       {%for mssg in messages %}
       <h6 style="color: red">{{mssg}}</h6>
       {%endfor%} {%csrf_token%}
@@ -27,11 +27,6 @@
         <label for="exampleInputEmail1" class="form-label">Full Name</label>
         <input required type="text" class="form-control" id="name" name="name"
         value="{{ name|default:'' }}" aria-describedby="emailHelp" />
-      </div>
-      <!-- Roll Number -->
-      <div class="mb-3">
-        <label for="exampleInputEmail1" class="form-label">Roll Number</label>
-        <input required type="text" class="form-control" id="rollNum" value="{{rollNum |default:'' }}" name="rollNum" aria-describedby="emailHelp" />
       </div>
       <!-- Willing -->
       <div class="input-group mb-3">
@@ -84,29 +79,6 @@
           aria-describedby="emailHelp"
         />
         <div id="emailHelp" class="form-text">Use Personal E-mail Id only</div>
-      </div>
-      <!-- Password -->
-      <div class="mb-3">
-        <label for="exampleInputPassword1" class="form-label">Password</label>
-        <input
-          required
-          type="password"
-          class="form-control"
-          name="password1"
-          id="exampleInputPassword1"
-        />
-      </div>
-      <div class="mb-3">
-        <label for="exampleInputPassword2" class="form-label"
-          >Confirm Password</label
-        >
-        <input
-          required
-          type="password"
-          class="form-control"
-          name="password2"
-          id="exampleInputPassword1"
-        />
       </div>
       <!-- mobile number -->
       <div class="mb-3">
@@ -191,14 +163,14 @@
         >
       </div>
       <!-- Upload section -->
-       <div class="mb-3">
+       <!-- <div class="mb-3">
        <label >Upload Your Passport Size Image</label>
        <input type="file" name="profilepic" required><br>
        <label >Upload Your Grade Sheet</label>
        <input type="file" name="results" required><br>
        <label >Upload Your Gate Score Card(if You applied)</label>
        <input type="file" name="scorecard" >
-       </div>
+       </div> -->
       <!-- Submit button -->
       <button type="submit" class="btn btn-primary">Submit</button>
     </form>

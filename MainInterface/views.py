@@ -8,7 +8,7 @@ from django.http import HttpResponse,JsonResponse,HttpResponseBadRequest
 import pandas as pd
 import re
 import json
-from .models import Student,Registrations,Company,AuthUser
+from .models import Student,Registrations,Company,AuthUser,Documents
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.conf import settings
@@ -16,6 +16,17 @@ from .models import Mails
 import csv
 import io
 import openpyxl
+from django.utils.crypto import get_random_string
+from supabase import create_client
+import urllib.parse
+
+def extract_relative_path(full_url):
+    parsed = urllib.parse.urlparse(full_url)
+    # Assuming bucket is 'profile-pics', path after '/profile-pics/' is what we want
+    path_parts = parsed.path.split('/storage/v1/object/public/profile-pics/')
+    if len(path_parts) == 2:
+        return path_parts[1]
+    return None
 
 # Homepage view
 def home_page_view(request):
@@ -713,7 +724,7 @@ def index(request):
                     for reg in register:
                         print(4)
                         # print(reg.student)
-                        company=Company.objects.get(tbl_id=reg.company_id)
+                        company=Company.objects.get(company_id=reg.company_id)
                         level = levelId.get(reg.level, 0)
                         print("reg.level",reg.level)
                         ob={"companyName":company.name,"status":reg.status,"level":level}
@@ -750,6 +761,10 @@ def register(request):
         placed=request.POST['placed']
         linkedin=request.POST['linkedin']
         willing=request.POST['willing']
+        profilepic=request.FILES.get('profilepic')
+        results=request.FILES.get('results')
+        scorecard=request.FILES.get('scorecard')
+        print(profilepic)
         # print(name,rollNum,dept,year,email,passwd1,interest,willing,mobile,cgpa,gate,backlogs,placed,linkedin)
         if len(rollNum) != 6:
             messages.info(request, "Enter a Valid Roll Number Given by Institute")
@@ -851,12 +866,66 @@ def register(request):
                 'willing': willing,
                 'gate':gate
             })
+        if not (profilepic ):
+            print("error")
+            messages.info(request,"Error in File Upload")
+            return render(request, 'register.html', {
+                'message': 'All three files are required.',
+                'status': 'error'
+            })
+        try:
+            supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+
+            # Profile picture
+            filename = f"profilepics/{get_random_string(10)}_{profilepic.name}"
+            upload_response = supabase.storage.from_('profile-pics').upload(filename, profilepic.read())
+
+            if hasattr(upload_response, 'error') and upload_response.error:
+                raise Exception(f"Profile pic upload failed: {upload_response.error.message}")
+
+            public_url = supabase.storage.from_('profile-pics').get_public_url(filename)
+            if not public_url:
+                raise Exception("Failed to retrieve profile picture URL.")
+
+            # Scorecard (optional)
+            if scorecard:
+                gaterank = f"applications/gateresults/{get_random_string(10)}_{rollNum}.pdf"
+                gate_response = supabase.storage.from_('profile-pics').upload(gaterank, scorecard.read())
+
+                if hasattr(gate_response, 'error') and gate_response.error:
+                    raise Exception(f"Scorecard upload failed: {gate_response.error.message}")
+
+                gate_url = supabase.storage.from_('profile-pics').get_public_url(gaterank)
+            else:
+                gate_url = "null"
+
+            # Results document (optional)
+            if results:
+                resultsname = f"applications/results/{get_random_string(10)}_{rollNum}.pdf"
+                results_response = supabase.storage.from_('profile-pics').upload(resultsname, results.read())
+
+                if hasattr(results_response, 'error') and results_response.error:
+                    raise Exception(f"Results upload failed: {results_response.error.message}")
+
+                results_url = supabase.storage.from_('profile-pics').get_public_url(resultsname)
+            else:
+                results_url = "null"
+
+        except Exception as e:
+            print("Error here:", e)
+            return render(request, 'register.html', {
+                'message': f'Error: {str(e)}',
+                'status': 'error'
+            })
+
 
         dept=branches[int(rollNum)//100000]
         student=Student.objects.create(name=name,roll_no=rollNum,branch=dept,registered=willing,
                                        job_type=interest,email=email,academic_year=year,password=passwd1,
-                                       gate_rank=gate,mobile=mobile,cgpa=cgpa,placed=placed,backlogs=backlogs,linkedin=linkedin)
+                                       gate_rank=gate,mobile=mobile,cgpa=cgpa,placed=placed,backlogs=backlogs,linkedin=linkedin,profilepic=public_url)
         student.save()
+        docs=Documents.objects.create(rollno=rollNum,results=results_url,scorecard=gate_url)
+        docs.save()
         user=User.objects.create_user(password=passwd1,username=rollNum+"@student.nitandhra.ac.in",first_name=name,email=email)
         user.save()
         return redirect("login")
@@ -890,12 +959,13 @@ def profile(request):
                 try: 
                     register=Registrations.objects.filter(rollnumber__iexact=roll)
                     for reg in register:
-                        company=Company.objects.get(tbl_id=reg.company_id)
+                        company=Company.objects.get(company_id=reg.company_id)
                         ob={"companyName":company.name,"level":levelId[reg.level],"status":reg.status}
                         send.append(ob)
                 except Exception as e:
                     print(e)
-    
+    # docs=Documents.objects.get(rollno=roll)
+    # print(docs.results)
     return render(request,"profile.html",{'student':student,'send':send})
 
 def tplogin(request):
@@ -929,19 +999,23 @@ def verifystudents(request):
                     students = Student.objects.filter(branch=branch,verified="No")
                     return render(request, "verifystudents.html", {'students': students})
                 except Exception as e:
+                    print(e)
                     messages.info(request,"All Students from this Branch are Verified.")
                     return render(request,"verifystudents.html")
             elif branch=="nil" and roll!="":#through rollno
                 try :
                     student = Student.objects.get(roll_no=roll)
-                    return render(request, "verifystudents.html", {'student': student,'data':1})
+                    docs=Documents.objects.get(rollno=request.POST['rollNumber'])
+                    return render(request, "verifystudents.html", {'student': student,'data':1,'docs':docs})
                 except Exception as e:
+                    print(e)
                     messages.info(request,"Enter Valid Credentials")
                     return render(request,"verifystudents.html")
             elif branch!="nil" and roll!="":#through both
                 try :
                     student = Student.objects.get(roll_no=roll,branch=branch)
-                    return render(request, "verifystudents.html", {'student': student,'data':1})
+                    docs=Documents.objects.get(rollno=request.POST['rollNumber'])
+                    return render(request, "verifystudents.html", {'student': student,'data':1,'docs':docs})
                 except Exception as e:
                     messages.info(request,"Enter Valid Credentials")
                     return render(request,"verifystudents.html")
@@ -950,7 +1024,8 @@ def verifystudents(request):
                 return render(request,"verifystudents.html")
         elif 'rollNumber' in request.POST:
             student = Student.objects.get(roll_no=request.POST['rollNumber'])
-            return render(request, "verifystudents.html", {'student': student,'data':1})
+            docs=Documents.objects.get(rollno=request.POST['rollNumber'])
+            return render(request, "verifystudents.html", {'student': student,'data':1,'docs':docs})
         else:
             rollno = request.POST['rollno']
             cgpa = request.POST['cgpa']
@@ -964,6 +1039,36 @@ def verifystudents(request):
             student.remarks = mssg
             if verify == "Yes":
                 student.verified = "Yes"
+                supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+                docs = Documents.objects.get(rollno=rollno)
+
+                file_path = extract_relative_path(docs.results)
+                file_path2 = None
+                d1=0
+                d2=1
+                if docs.scorecard and docs.scorecard != "null":
+                    file_path2 = extract_relative_path(docs.scorecard)
+
+                if file_path:
+                    response = supabase.storage.from_("profile-pics").remove([file_path])
+                    if isinstance(response, dict) and response.get("error"):
+                        print("Error deleting file:", response["error"])
+                    else:
+                        d1=1
+                        print("File deleted successfully")
+
+                if file_path2:
+                    response = supabase.storage.from_("profile-pics").remove([file_path2])
+                    if isinstance(response, dict) and response.get("error"):
+                        d2=0
+                        print("Error deleting file:", response["error"])
+                    else:
+                        d2=1
+                        print("Second file deleted successfully")
+                if d1 and d2:
+                    docs.delete()
+                    print(f"Documents row for rollno {rollno} deleted.")
+
             student.save()
             return redirect("tpportal")
                 
@@ -982,7 +1087,7 @@ def displayStatus(request,reg,roll):
                     #     company=Company.objects.get(tbl_id=request.company_id)
                     #     ob={"companyName":company.name,"level":levelId[reg.level],"status":reg.status}
                     #     send.append(ob)
-                    company=Company.objects.get(tbl_id=register.company_id)
+                    company=Company.objects.get(company_id=register.company_id)
                     ob={"companyName":company.name,"level":levelId[register.level],"status":register.status}
                     send.append(ob)
                 except Exception as e:
@@ -1159,6 +1264,7 @@ def stats(request):
     register=Registrations.objects.filter(rollnumber=roll)
     cv,apt,gd,ct,ti,hr,acc,rej=0,0,0,0,0,0,0,0
     app=register.count()
+    companies=[]
     for reg in register:
         print("level",reg.level)
         if levelId[reg.level]>=2:
@@ -1177,7 +1283,38 @@ def stats(request):
             acc=acc+1
         if reg.status=="Rejected":
             rej=rej+1
-    percent=((app-acc-rej)/app)*100
-    student={"Applied":app,"cv":cv,"apt":apt,"gd":gd,"ct":ct,"ti":ti,"hr":hr,"acc":acc,"rej":rej,"percent":percent}
+        if reg.status!="Accepted" and reg.status!="Rejected":
+            comp=Company.objects.get(company_id=reg.company_id)
+            companies.append(comp)
+    if app!=0:
+        percent=((app-acc-rej)/app)*100
+    else:
+        percent=0
+    student={"Applied":app,"cv":cv,"apt":apt,"gd":gd,"ct":ct,"ti":ti,"hr":hr,"acc":acc,"rej":rej,"percent":percent,"companies":companies}
     print(student)
     return render(request,"stats.html",{"student":student})
+
+
+@login_required(login_url='tplogin')
+def editprofile(request):
+    if request.method=="POST":
+        roll=request.user.username.split("@")[0]
+        student=Student.objects.get(roll_no=roll)
+        student.name=request.POST['name']
+        student.year=request.POST['year']
+        student.email=request.POST['email']
+        student.willing=request.POST['willing']
+        student.mobile=request.POST['mobileNo']
+        student.cgpa=request.POST['cgpa']
+        student.gate=request.POST['gate']
+        student.backlogs=request.POST['backlogs']
+        student.interest=request.POST['job_interest_type']
+        student.placed=request.POST['placed']
+        student.linkedin=request.POST['linkedin']
+        student.verified="No"
+        student.remarks="Nil"
+        student.save()
+        return redirect('profile')
+
+    else:
+        return render(request,"editprofile.html")

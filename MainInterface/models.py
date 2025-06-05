@@ -192,6 +192,7 @@ class Student(models.Model):
     verified = models.TextField(blank=True, null=True)
     remarks = models.TextField(blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
+    profilepic = models.TextField(db_column='profilePic', blank=True, null=True)  # Field name made lowercase.
 
     class Meta:
         managed = False
@@ -199,20 +200,24 @@ class Student(models.Model):
 
 
 class Company(models.Model):
-    tbl_id = models.TextField(blank=True,primary_key=True)
+    company_id = models.TextField(primary_key=True)
     name = models.TextField(blank=True, null=True)
     type_of_company = models.TextField(blank=True, null=True)
-    eligible_branch = models.TextField(blank=True, null=True)
+    eligible_core_branch = models.TextField(blank=True, null=True)
     type_of_job = models.TextField(blank=True, null=True)
     job_profile = models.TextField(blank=True, null=True)
     job_offer = models.TextField(blank=True, null=True)
     max_package_offered = models.TextField(blank=True, null=True)
     eligible_passouts = models.TextField(blank=True, null=True)
     hr_contact_details = models.TextField(blank=True, null=True)
+    google_form_link = models.TextField(blank=True, null=True)
+    brochure_path = models.TextField(blank=True, null=True)
+    eligible_non_core_branch = models.TextField(blank=True, null=True)
 
     class Meta:
         managed = False
         db_table = 'company'
+
 
 class Mails(models.Model):
     id = models.BigAutoField(primary_key=True)
@@ -223,3 +228,12 @@ class Mails(models.Model):
     class Meta:
         managed = False
         db_table = 'mails'
+
+class Documents(models.Model):
+    rollno = models.BigAutoField(primary_key=True)
+    results = models.TextField()
+    scorecard = models.TextField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'documents'
